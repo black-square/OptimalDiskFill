@@ -8,12 +8,12 @@
 
 #include <vector>
 #include <iostream>
-#include "../libs/FirstHeader.h"
-#include "../libs/FileSystem.h"
-#include "../libs/strings.hpp"
-#include "../libs/TestHelper.h" 
+#include "../nwlibs/FirstHeader.h"
+#include "../nwlibs/FileSystem.h"
+#include "../nwlibs/strings.hpp"
+#include "../nwlibs/TestHelper.h" 
 #include <shlwapi.h>
-#include "../libs/CoutConvert.h"
+#include "../nwlibs/CoutConvert.h"
 #include <limits>
 
 typedef std::basic_string<TCHAR> TString;

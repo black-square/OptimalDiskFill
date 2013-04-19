@@ -198,43 +198,43 @@
 			Name="libs"
 			>
 			<File
-				RelativePath="..\libs\Auxiliary.cpp"
+				RelativePath="..\nwlibs\Auxiliary.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\Auxiliary.h"
+				RelativePath="..\nwlibs\Auxiliary.h"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\CoutConvert.cpp"
+				RelativePath="..\nwlibs\CoutConvert.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\CoutConvert.h"
+				RelativePath="..\nwlibs\CoutConvert.h"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\FileSystem.cpp"
+				RelativePath="..\nwlibs\FileSystem.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\FileSystem.h"
+				RelativePath="..\nwlibs\FileSystem.h"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\FirstHeader.h"
+				RelativePath="..\nwlibs\FirstHeader.h"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\strings.hpp"
+				RelativePath="..\nwlibs\strings.hpp"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\TestHelper.cpp"
+				RelativePath="..\nwlibs\TestHelper.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\libs\TestHelper.h"
+				RelativePath="..\nwlibs\TestHelper.h"
 				>
 			</File>
 		</Filter>
