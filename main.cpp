@@ -14,6 +14,7 @@
 #include "../libs/TestHelper.h" 
 #include <shlwapi.h>
 #include "../libs/CoutConvert.h"
+#include <limits>
 
 typedef std::basic_string<TCHAR> TString;
 typedef LONGLONG TFileSize;
@@ -159,7 +160,7 @@ TFileSize CalcDirSize( const TString &Dir )
 }
 
 //Находим в каталоге Dir все файлы и каталоги, исключая вложенные и заполняем Items
-void LoadItems( const TString &Dir, TItems &Items, const TString &FilePrefix = _T("") )
+void LoadItems( const TString &Dir, TItems &Items, const TString &FilePrefix = _T(""), TFileSize maxDirSize = std::numeric_limits<TFileSize>::max() )
 {
    TItem CurItem;
 
@@ -178,7 +179,17 @@ void LoadItems( const TString &Dir, TItems &Items, const TString &FilePrefix = _
       CurItem.Name = FilePrefix + FindData.cFileName;
       
       if( FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
-         CurItem.Size = CalcDirSize( Dir + _T("\\") + FindData.cFileName );  
+      {
+         const TString curDirName = Dir + _T("\\") + FindData.cFileName;
+      
+         CurItem.Size = CalcDirSize( curDirName );  
+         
+         if( CurItem.Size > maxDirSize )
+         {
+            LoadItems( curDirName, Items, FilePrefix + FindData.cFileName + _T("\\"), maxDirSize );
+            continue;    
+         } 
+      } 
       else
          CurItem.Size = GetSize( FindData );
 
@@ -307,8 +318,8 @@ void PrintNotFitToDestDirs( const TItems &Items, TFileSize DestSpace )
 /////////////////////////////////////////////////////////////////////////////////
 
 const wchar_t * const szDescription = 
-   L"OptimalDiskFill v1.8.1\n" 
-   L"Дмитрий Шестеркин (c) 2010\n"
+   L"OptimalDiskFill v1.9.0\n" 
+   L"Дмитрий Шестеркин (c) 2013\n"
    L"Программа помогает оптимально заполнить емкость CD, DVD дисков или других\n"
    L"носителей при записи данных на них. Она сканирует каталог и вычисляет\n" 
    L"размер его файлов и вложенных каталогов, после этого находит такую\n" 
@@ -316,8 +327,12 @@ const wchar_t * const szDescription =
    L"но не больше заданного.\n"
    L"\n"
    L"Использование:\n"
-   L"      OptimalDiskFill \"<Каталог 1>\" \"[Каталог 2]\" \"[Каталог N]\"\n"
+   L"      OptimalDiskFill [--look_into_oversized_dirs] \"<Каталог 1>\"\n" 
+   L"                      \"[Каталог 2]\" \"[Каталог N]\"\n"
    L"                      \"<Желаемый объём>[Tb|Gb|Mb|Kb|b]\"\n"
+   L"\n"
+   L"      look_into_oversized_dirs - войти внутрь каталога, если его размер\n" 
+   L"                                 превышает <Желаемый объём>\n"
    L"\n"
    L"Примечание:\n"
    L"      Поскольку в общем виде задача поиска оптимальной комбинации является\n" 
@@ -343,8 +358,16 @@ int _tmain(int argc, _TCHAR* argv[])
       if( argc < 3 )
          APL_THROW( _T("Недопустимое количество аргументов. См. Использовние") );
 
+      bool lookIntoOversizedDirs = false;
+
       for( int curArg = 1; curArg < argc - 1; ++curArg )
       {
+          if( _tcscmp(argv[curArg], _T("--look_into_oversized_dirs")) == 0 )
+          { 
+            lookIntoOversizedDirs = true;
+            continue;
+          }
+      
           Dirs.push_back(argv[curArg]);
 
           if( PathIsDirectory(Dirs.back().c_str()) == FALSE )
@@ -357,11 +380,14 @@ int _tmain(int argc, _TCHAR* argv[])
          APL_THROW( _T("Желаемый размер должен быть больше нуля") );
 #else
       //Dirs.push_back(_T("c:\\_games\\_PSP\\_nead_burn") );
-      Dirs.push_back(_T("c:\\!My_docs\\_Разобрать\\_NeadBurn\\Фильмы"));
+      //Dirs.push_back(_T("c:\\!My_docs\\_MOVIES\\_new"));
+      Dirs.push_back(_T("c:\\!My_docs\\_PHOTOS\\!NOT_BURN!"));
       FreeSpace = TFileSize(4483) * 1024 * 1024;
+      bool lookIntoOversizedDirs = true;
 #endif
 
       TItems Items;
+      const TFileSize maxDirSize = lookIntoOversizedDirs ? FreeSpace : std::numeric_limits<TFileSize>::max();
       
       std::cout << "Желаемый объём:  " << TFormat(FreeSpace) << std::endl;
 
@@ -373,7 +399,7 @@ int _tmain(int argc, _TCHAR* argv[])
             FilePrefix << it - Dirs.begin() + 1 << _T("\\");
 
           std::cout << "Чтение каталога " << FilePrefix.str() << ": " << *it << " ..." << std::endl;
-          LoadItems( *it, Items, FilePrefix.str() ); 
+          LoadItems( *it, Items, FilePrefix.str(), maxDirSize ); 
       }
           
       //PrintFileSizes( Items );
