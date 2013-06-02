@@ -7,6 +7,7 @@
 */
 
 #include <vector>
+#include <map>
 #include <iostream>
 #include "../nwlibs/FirstHeader.h"
 #include "../nwlibs/FileSystem.h"
@@ -133,6 +134,9 @@ struct SizeCmp: std::binary_function<TItem, TItem, bool>
 //Частное решение
 typedef std::vector<TItems::const_iterator> TSolve;
 
+//Сокращения полного пути
+typedef std::map<TString, TString> TPathReplaces;
+
 /////////////////////////////////////////////////////////////////////////////////
 
 //Получить размер файла из структуры FD
@@ -202,24 +206,9 @@ void LoadItems( const TString &Dir, TItems &Items, const TString &FilePrefix = _
 }
 /////////////////////////////////////////////////////////////////////////////////
 
-//Печатаем частное решение
-void PrintSolve( TFileSize FreeSpace, const TSolve &Solve)
-{
-   std::cout << "\n----- Найдено частное решение -----" << std::endl;
-   std::cout << "Осталось не использованно: " << TFormat(FreeSpace) << std::endl;
-
-   TFileSize TotalSize = 0;
-   for( TSolve::const_iterator I = Solve.begin(); I != Solve.end(); ++I )
-   {
-      std::cout << (*I)->Name << std::endl;
-      TotalSize += (*I)->Size;
-   }
-   
-   std::cout << "Всего: " << TFormat(TotalSize) << std::endl;
-}
-
 //Основная функция выполняющая вычисления
-void OptimalFillImpl( TItems::const_iterator Begin, TItems::const_iterator End, TSolve &CurSolve, TFileSize FreeSpace, TFileSize &BestFreeSpace, bool &StopFlag )
+template<class PrintStrategyT>
+void OptimalFillImpl( TItems::const_iterator Begin, TItems::const_iterator End, TSolve &CurSolve, TFileSize FreeSpace, TFileSize &BestFreeSpace, bool &StopFlag, const PrintStrategyT &printStrategy)
 {  
    //На идею алгоритма меня натолкнула статья:
    //"Задача об одномерной оптимальной упаковке" 
@@ -247,7 +236,7 @@ void OptimalFillImpl( TItems::const_iterator Begin, TItems::const_iterator End, 
          {
             //Нашли новое решение
             BestFreeSpace = CurFreeSpace;
-            PrintSolve(BestFreeSpace, CurSolve);
+            printStrategy(BestFreeSpace, CurSolve);
 
             if( BestFreeSpace == 0 )
                StopFlag = true;
@@ -257,7 +246,7 @@ void OptimalFillImpl( TItems::const_iterator Begin, TItems::const_iterator End, 
          //Поскольку этот интерывал мы обработали на предыдущих шагах
          ++Begin;
 
-         OptimalFillImpl( Begin, End, CurSolve, CurFreeSpace, BestFreeSpace, StopFlag );
+         OptimalFillImpl( Begin, End, CurSolve, CurFreeSpace, BestFreeSpace, StopFlag, printStrategy );
       }
       else
          ++Begin;
@@ -268,7 +257,8 @@ void OptimalFillImpl( TItems::const_iterator Begin, TItems::const_iterator End, 
 /////////////////////////////////////////////////////////////////////////////////
 
 //Вычислить оптимальное заполнение директории
-void OptimalFill( TItems &Items, TFileSize FreeSpace )
+template<class PrintStrategyT>
+void OptimalFill( TItems &Items, TFileSize FreeSpace, const PrintStrategyT &printStrategy )
 {
    //Мы сортируем файлы для того чтобы при поиске решений сначала учитывались самые 
    //большие файлы, а точная подгонка осуществлялась комбинированием маленькими файлами
@@ -278,7 +268,7 @@ void OptimalFill( TItems &Items, TFileSize FreeSpace )
    TSolve Solve;
    bool StopFlag = false;
 
-   OptimalFillImpl( Items.begin(), Items.end(), Solve, FreeSpace, FreeSpace, StopFlag );
+   OptimalFillImpl( Items.begin(), Items.end(), Solve, FreeSpace, FreeSpace, StopFlag, printStrategy );
 }
 /////////////////////////////////////////////////////////////////////////////////
 
@@ -317,8 +307,102 @@ void PrintNotFitToDestDirs( const TItems &Items, TFileSize DestSpace )
 }
 /////////////////////////////////////////////////////////////////////////////////
 
+//Печатаем частное решение
+void PrintSolve( TFileSize FreeSpace, const TSolve &Solve )
+{
+  std::cout << "\n----- Найдено частное решение -----" << std::endl;
+  std::cout << "Осталось не использованно: " << TFormat(FreeSpace) << std::endl;
+
+  TFileSize TotalSize = 0;
+  for( TSolve::const_iterator I = Solve.begin(); I != Solve.end(); ++I )
+  {
+    std::cout << (*I)->Name << std::endl;
+    TotalSize += (*I)->Size;
+  }
+
+  std::cout << "Всего: " << TFormat(TotalSize) << std::endl;
+}
+/////////////////////////////////////////////////////////////////////////////////
+
+class CoutRedirect
+{
+public:
+  CoutRedirect( const std::ofstream &os )
+  {
+    std::cout.flush();
+    m_pPrevBuf = std::cout.rdbuf( os.rdbuf() );  
+  }
+  
+  ~CoutRedirect()
+  {
+    std::cout.rdbuf( m_pPrevBuf );  
+  }
+
+private:
+  std::streambuf *m_pPrevBuf;  
+};
+/////////////////////////////////////////////////////////////////////////////////
+
+void MakeBatFile( TFileSize FreeSpace, const TSolve &Solve, const TPathReplaces &PathReplaces )
+{
+  std::ofstream flOut( "Solution.bat" );
+  
+  //Перенаправляем вывод std::cout в flOut для включения автоматической 
+  //конвертации в OEM866
+  CoutRedirect CoutRedirect(flOut);
+
+  std::cout << "@echo Осталось не использованно: " << TFormat(FreeSpace) << std::endl;
+
+  for( TSolve::const_iterator it = Solve.begin(); it != Solve.end(); ++it )
+  {
+    const TString::size_type prefixEnd = (*it)->Name.find( _T('\\') );
+    
+    if( prefixEnd == TString::npos )
+      APL_THROW( _T("Неверный формат имени файла: ") << (*it)->Name );
+      
+    const TString prefix( (*it)->Name.begin(), (*it)->Name.begin() + prefixEnd + 1 );
+    const TString pathOnly( (*it)->Name.begin() + prefixEnd + 1, (*it)->Name.end() );
+       
+    const TPathReplaces::const_iterator originDirIter = PathReplaces.find( prefix );
+    
+    if( originDirIter == PathReplaces.end() )
+      APL_THROW( _T("Неизвестный префикс: ") << prefix << _T(", ") << (*it)->Name );
+      
+    std::cout << _T("@call ProcessSolution.bat \"") << originDirIter->second << _T("\" \"") << pathOnly << _T("\"") << std::endl;  
+  }
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+
+struct PringOnScreenStrat
+{
+  void operator()( TFileSize FreeSpace, const TSolve &Solve ) const
+  {
+    PrintSolve( FreeSpace, Solve );
+  }
+};
+/////////////////////////////////////////////////////////////////////////////////
+
+struct PringOnScreenAndFile
+{
+  explicit PringOnScreenAndFile( const TPathReplaces &PathReplaces ):
+    PathReplaces(PathReplaces)
+  {} 
+
+
+  void operator()( TFileSize FreeSpace, const TSolve &Solve ) const
+  {
+    PrintSolve( FreeSpace, Solve );
+    MakeBatFile( FreeSpace, Solve, PathReplaces );
+  }
+  
+private:
+  const TPathReplaces &PathReplaces;   
+};
+/////////////////////////////////////////////////////////////////////////////////
+
 const wchar_t * const szDescription = 
-   L"OptimalDiskFill v1.9.0\n" 
+   L"OptimalDiskFill v1.10.0\n" 
    L"Дмитрий Шестеркин (c) 2013\n"
    L"Программа помогает оптимально заполнить емкость CD, DVD дисков или других\n"
    L"носителей при записи данных на них. Она сканирует каталог и вычисляет\n" 
@@ -327,8 +411,8 @@ const wchar_t * const szDescription =
    L"но не больше заданного.\n"
    L"\n"
    L"Использование:\n"
-   L"      OptimalDiskFill [--look_into_oversized_dirs] \"<Каталог 1>\"\n" 
-   L"                      \"[Каталог 2]\" \"[Каталог N]\"\n"
+   L"      OptimalDiskFill [--look_into_oversized_dirs] [--make_bat_file] \n" 
+   L"                      \"<Каталог 1>\" \"[Каталог 2]\" \"[Каталог N]\"\n"
    L"                      \"<Желаемый объём>[Tb|Gb|Mb|Kb|b]\"\n"
    L"\n"
    L"      look_into_oversized_dirs - войти внутрь каталога, если его размер\n" 
@@ -359,12 +443,19 @@ int _tmain(int argc, _TCHAR* argv[])
          APL_THROW( _T("Недопустимое количество аргументов. См. Использовние") );
 
       bool lookIntoOversizedDirs = false;
+      bool makeBatFile = false;
 
       for( int curArg = 1; curArg < argc - 1; ++curArg )
       {
           if( _tcscmp(argv[curArg], _T("--look_into_oversized_dirs")) == 0 )
           { 
             lookIntoOversizedDirs = true;
+            continue;
+          }
+          
+          if( _tcscmp(argv[curArg], _T("--make_bat_file")) == 0 )
+          { 
+            makeBatFile = true;
             continue;
           }
       
@@ -385,8 +476,8 @@ int _tmain(int argc, _TCHAR* argv[])
       FreeSpace = TFileSize(4483) * 1024 * 1024;
       bool lookIntoOversizedDirs = true;
 #endif
-
       TItems Items;
+      TPathReplaces PathReplaces;
       const TFileSize maxDirSize = lookIntoOversizedDirs ? FreeSpace : std::numeric_limits<TFileSize>::max();
       
       std::cout << "Желаемый объём:  " << TFormat(FreeSpace) << std::endl;
@@ -397,16 +488,24 @@ int _tmain(int argc, _TCHAR* argv[])
 
           if( Dirs.size() > 1 )
             FilePrefix << it - Dirs.begin() + 1 << _T("\\");
+          else
+            FilePrefix << _T("\\");
 
-          std::cout << "Чтение каталога " << FilePrefix.str() << ": " << *it << " ..." << std::endl;
+          std::cout << "Чтение каталога " << FilePrefix.str() << " = " << *it << " ..." << std::endl;
           LoadItems( *it, Items, FilePrefix.str(), maxDirSize ); 
+          
+          PathReplaces.insert( TPathReplaces::value_type(FilePrefix.str(), *it) );
       }
           
       //PrintFileSizes( Items );
       PrintNotFitToDestDirs( Items, FreeSpace );
 
       std::cout << "\nНачинаем поиск решений..." << std::endl;
-      OptimalFill( Items, FreeSpace );
+      
+      if( !makeBatFile )
+        OptimalFill( Items, FreeSpace, PringOnScreenStrat() );
+      else
+        OptimalFill( Items, FreeSpace, PringOnScreenAndFile(PathReplaces) );
 
       std::cout << "\nПоиск закончен. Последнее решение оптимальное." << std::endl;
    }
