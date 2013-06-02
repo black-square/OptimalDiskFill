@@ -13,15 +13,17 @@ rem ##########################################################################
   set DEST_DIR=%~dp2
   set DEST_FILE=%DEST_DIR%\%~nx1
   
-  if not exist "%~1" call :ShowError Dir not exists: "%~1"
+  if not exist "%~1" call :ShowError Dir/File not exists: "%~1"
 
   if exist "%~1\.\" (
-    for /F "delims=" %%S in ('"dir "%~1" /B "') do call :MoveImpl "%~1\%%~S" "%~2\%%~S"
+    for /F "usebackq delims=" %%S in (`dir "%~1" /B`) do call :MoveImpl "%~1\%%~S" "%~2\%%~S"
     call :CheckError rd "%~1"
   ) else (  
     if not exist "%DEST_DIR%" call :CheckError mkdir "%DEST_DIR%"
     if exist "%DEST_FILE%" call :ShowError File already exists: "%DEST_FILE%"
     
+    rem move refuses working with hidden files http://superuser.com/q/392969
+    call :CheckError attrib -R -S -H "%~1"
     call :CheckError move "%~1" "%DEST_DIR%" > NUL
     echo move "%~1"
   )
